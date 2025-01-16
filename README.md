@@ -1,6 +1,8 @@
 Product attributes dataset
 ==============================
 
+Topic of the work: "Технология подготовки датасета для обучения большой языковой модели по извлечению атрибутов из товарных позиций".
+
 A dataset contain product and attributes for fine-tuning LLMs.
 
 Project Organization
