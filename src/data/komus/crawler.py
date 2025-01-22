@@ -1,8 +1,15 @@
 import undetected_chromedriver as uc
 from selenium.webdriver.remote.webdriver import By
-from time import sleep
 
+
+from time import sleep
 from math import ceil 
+from json import dump
+from os.path import exists
+
+CATALOG_LINK = "https://www.komus.ru/katalog/kantstovary/kalkulyatory/c/970/"
+FILENAME = "kalkulyatory"
+
 
 options = uc.ChromeOptions()
 
@@ -24,7 +31,10 @@ driver = uc.Chrome(options=options)
 
 
 def load_page(link: str):
+    print(link)
     driver.get(link)
+    
+    # условие для загрузки страницы
     sleep(1)
 
 
@@ -93,11 +103,29 @@ def parse_product_page(product_link: str):
 
     return res
 
-# product = parse_product_page('https://www.komus.ru/katalog/mebel/ofisnye-kresla-i-stulya/kresla-dlya-rukovoditelej/kresla-dlya-rukovoditelej-standartnye/kreslo-dlya-rukovoditelya-easy-chair-655-lt-ttw-chernoe-setka-tkan-plastik-/p/1645881/?tabId=specifications')
 
-links = get_links("https://www.komus.ru/katalog/kantstovary/kalkulyatory/c/970/")
+if exists(f"src\data\komus\{FILENAME}_links.txt"):
+    with open(f"src\data\komus\{FILENAME}_links.txt") as file:
+        links = file.read().split("\n")
+else:
+    links = get_links(CATALOG_LINK)
+
+    with open(f"src\data\komus\{FILENAME}_links.txt", 'w') as file:
+        file.write("\n".join(links))
+
 
 print(*links, sep="\n")
-print(len(links))
+
+products = []
+
+for i, product_link in enumerate(links):
+    print(i, product_link)
+
+    product = parse_product_page(product_link)
+    products.append(product)
+
+
+with open(f"src\data\komus\{FILENAME}.json", "w", encoding="utf-8") as file:
+    dump(products, file, ensure_ascii=False)
 
 driver.close()
