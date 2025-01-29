@@ -1,15 +1,17 @@
 import undetected_chromedriver as uc
 from selenium.webdriver.remote.webdriver import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 
 from time import sleep
 from math import ceil 
 from json import dump
 from os.path import exists
+from os import remove
 
-CATALOG_LINK = "https://www.komus.ru/katalog/kantstovary/kalkulyatory/c/970/"
-FILENAME = "kalkulyatory"
-
+CATALOG_LINK = "https://www.komus.ru/katalog/khozyajstvennye-tovary/meshki-i-emkosti-dlya-musora/korziny-dlya-bumag/c/10171/?from=menu-v1-kantstovary"
+FILENAME = "korziny-dlya-bumag"
 
 options = uc.ChromeOptions()
 
@@ -30,12 +32,16 @@ options.add_experimental_option("prefs", {
 driver = uc.Chrome(options=options)
 
 
-def load_page(link: str):
-    print(link)
+def load_page(link: str, wait_element_class: str = None):
     driver.get(link)
-    
-    # условие для загрузки страницы
-    sleep(1)
+
+    # условие для прогрузки страницы
+    if wait_element_class:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, wait_element_class))
+        )
+    else:
+        sleep(1)    
 
 
 def create_params(**params):
@@ -45,7 +51,8 @@ def create_params(**params):
 def get_links(catalog_link: str):
     clear_catalog_link = catalog_link.split('?')[0]
 
-    load_page(clear_catalog_link + f"?{create_params(listingMode='GRID')}")
+    load_page(clear_catalog_link + f"?{create_params(listingMode='GRID')}",
+              wait_element_class="catalog__header-sup")
 
     count_elements = int(driver.find_element(By.CLASS_NAME, "catalog__header-sup").text)
 
@@ -61,17 +68,18 @@ def get_links(catalog_link: str):
 
 
 def get_links_page(catalog_link: str):
-    load_page(catalog_link)
+    load_page(catalog_link,
+              wait_element_class="js-article-link")
 
     product_items = driver.find_elements(By.CLASS_NAME, "js-article-link")
-
     product_links = [product.get_attribute('href').split('?')[0] for product in product_items]
 
     return product_links
 
 
 def parse_product_page(product_link: str):
-    load_page(product_link + f"?{create_params(tabId='specifications')}")
+    load_page(product_link + f"?{create_params(tabId='specifications')}",
+              wait_element_class="product-details-page__title")
 
     title = driver.find_element(By.CLASS_NAME, "product-details-page__title").text
 
@@ -82,12 +90,6 @@ def parse_product_page(product_link: str):
 
     top_tech = list(zip(names, values[:len(names)]))
     bottom_tech = list(zip(feature, values[len(names):]))
-
-    # for left, right in top_tech:
-    #     print(left, right)
-
-    # for left, right in bottom_tech:
-    #     print(left, right)
 
     res = {
         'link': product_link,
@@ -114,6 +116,10 @@ else:
         file.write("\n".join(links))
 
 
+def save_json(filepath, data):
+    with open(filepath, "w", encoding="utf-8") as file:
+        dump(data, file, ensure_ascii=False)
+
 print(*links, sep="\n")
 
 products = []
@@ -124,8 +130,10 @@ for i, product_link in enumerate(links):
     product = parse_product_page(product_link)
     products.append(product)
 
+    if i % 10 == 0:
+        save_json(f"src\data\komus\{FILENAME}_temp.json", products)
 
-with open(f"src\data\komus\{FILENAME}.json", "w", encoding="utf-8") as file:
-    dump(products, file, ensure_ascii=False)
+save_json(f"src\data\komus\{FILENAME}.json", products)
+remove(f"src\data\komus\{FILENAME}_temp.json")
 
 driver.close()
