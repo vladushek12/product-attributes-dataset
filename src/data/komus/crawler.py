@@ -1,31 +1,47 @@
-from fileinput import filename
-import undetected_chromedriver as uc
+from typing import Any
 from selenium.webdriver.remote.webdriver import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from undetected_chromedriver import Chrome
 
-from driver import get_driver, load_page
-from text_utils import get_category_name, create_params
+from driver import custom_chrome_driver, load_page
+from text_utils import get_category_name, create_params, fix_category_name
 
-from time import sleep
 from math import ceil 
-from json import dump
+from json import dump, load
 from os.path import exists
 from os import remove
-
-# CATALOG_LINK = "https://www.komus.ru/katalog/khozyajstvennye-tovary/meshki-i-emkosti-dlya-musora/korziny-dlya-bumag/c/10171/?from=menu-v1-kantstovary"
-# FILENAME = "korziny-dlya-bumag"
+import sys
 
 
-def get_links(driver: Chrome, catalog_link: str) -> list[str]:
+def get_header_catalog(driver: Chrome):
+    """Функция для получения загаловка каталога на русском языке. Работает на прогруженной странице.
+
+    Args:
+        driver (Chrome): Драйвер Chrome браузера.
+
+    Returns:
+        tuple[str, int]: Возвращает название и количество элементов, которое хранится в загаловке на странице.
+    """
+    category_name = driver.find_element(By.CLASS_NAME, "catalog__header").text
+    return fix_category_name(category_name)
+
+
+def get_links_from_catalog(driver: Chrome, catalog_link: str) -> tuple[str, list[str]]:
+    """Функция которая обрабатывает каталог и возвращает ссылки на продукты
+
+    Args:
+        driver (Chrome): Драйвер Chrome браузера.
+        catalog_link (str): Ссылка на каталог.
+
+    Returns:
+        tuple[str, list[str]: Возвращает название каталога и список ссылок на продукты.
+    """
     clear_catalog_link = catalog_link.split('?')[0]
 
     load_page(driver,
               clear_catalog_link + f"?{create_params(listingMode='GRID')}",
-              wait_element_class="catalog__header-sup")
+              wait_element_class="catalog__header")
 
-    count_elements = int(driver.find_element(By.CLASS_NAME, "catalog__header-sup").text)
+    category_name, count_elements = get_header_catalog(driver)
 
     count_pages = ceil(float(count_elements)/30)
     print(f"count pages:{count_pages}")
@@ -33,12 +49,21 @@ def get_links(driver: Chrome, catalog_link: str) -> list[str]:
     links = []
 
     for page in range(count_pages):
-        links += get_links_page(driver, clear_catalog_link + f"?{create_params(listingMode='GRID', page=page)}")
+        links += get_product_links_from_page(driver, clear_catalog_link + f"?{create_params(listingMode='GRID', page=page)}")
 
-    return links
+    return category_name, links
 
 
-def get_links_page(driver: Chrome, catalog_link: str):
+def get_product_links_from_page(driver: Chrome, catalog_link: str) -> list[str]:
+    """Функция для скрапинга ссылок со страницы каталога.
+
+    Args:
+        driver (Chrome): Драйвер Chrome браузера.
+        catalog_link (str): Ссылка на страницу каталога
+
+    Returns:
+        list[str]: Список ссылок
+    """
     load_page(driver,
               catalog_link,
               wait_element_class="js-article-link")
@@ -49,7 +74,16 @@ def get_links_page(driver: Chrome, catalog_link: str):
     return product_links
 
 
-def parse_product_page(driver: Chrome, product_link: str):
+def parse_product_page(driver: Chrome, product_link: str) -> dict[str, Any]:
+    """Скрапинг страницы товара
+
+    Args:
+        driver (Chrome): Драйвер Chrome браузера.
+        product_link (str): Страница товара
+
+    Returns:
+        dict[str, Any]: Возвращает словарь содержащий ссылку на товар, название и его характеристики.
+    """
     load_page(driver,
               product_link + f"?{create_params(tabId='specifications')}",
               wait_element_class="product-details-page__title")
@@ -78,44 +112,90 @@ def parse_product_page(driver: Chrome, product_link: str):
 
     return res
 
+
+def save_json(filepath, data):
+    with open(filepath, "w", encoding="utf-8") as file:
+        dump(data, file, ensure_ascii=False)
+
+
 if __name__ == "__main__":
-    CATALOG_LINK = input()
-    FILENAME = get_category_name(CATALOG_LINK)
+    # Получаем ссылки из аргументов при вызове
+    CATALOG_LINKS = sys.argv[1:]
+    #filepath for save data
     FILEPATH = "src\data\komus\data"
 
-    if exists(f"{FILEPATH}\{FILENAME}.json"):
-        quit()
+    with custom_chrome_driver() as driver:
+        # Проходимся в цикле по ссылкам
+        for CATALOG_LINK in CATALOG_LINKS:
+            FILENAME = get_category_name(CATALOG_LINK)
+            
+            category_name_rus = ""
 
-    driver = get_driver()
+            json_dump = {
+                "category_name": "",
+                "count": 0,
+                "products": []
+            }
 
-    if exists(f"{FILEPATH}\{FILENAME}_links.txt"):
-        with open(f"{FILEPATH}\{FILENAME}_links.txt") as file:
-            links = file.read().split("\n")
-    else:
-        links = get_links(driver, CATALOG_LINK)
+            print(f"category: {FILENAME}")
 
-        with open(f"{FILEPATH}\{FILENAME}_links.txt", 'w') as file:
-            file.write("\n".join(links))
+            # Проверка на то, готов ли уже файл по данной категории
+            if exists(f"{FILEPATH}\{FILENAME}.json"):
+                print(f"category is done")
+                continue
 
+            # В случае появления ошибки ссылки с товарами уже сохранены поэтому их можно загрузить из файла
+            if exists(f"{FILEPATH}\{FILENAME}_links.txt"):
+                with open(f"{FILEPATH}\{FILENAME}_links.txt", "r") as file:
+                    links = file.read().split("\n")  
 
-    def save_json(filepath, data):
-        with open(filepath, "w", encoding="utf-8") as file:
-            dump(data, file, ensure_ascii=False)
+                load_page(driver, CATALOG_LINK, "catalog__header")
+                category_name_rus, _ = get_header_catalog(driver)
+            else:
+                category_name_rus, links = get_links_from_catalog(driver, CATALOG_LINK)
 
-    print(*links, sep="\n")
+                with open(f"{FILEPATH}\{FILENAME}_links.txt", 'w') as file:
+                    file.write("\n".join(links))
 
-    products = []
+            count_checked_products = 0
 
-    for i, product_link in enumerate(links):
-        print(i, product_link)
+            # Если работа скрипта была прервана то есть возможность восстановления работы
+            if exists(f"{FILEPATH}\{FILENAME}_temp.json"):
+                with open(f"{FILEPATH}\{FILENAME}_temp.json", "r", encoding="utf-8") as file:
+                    json_dump["products"] = load(file)
 
-        product = parse_product_page(driver, product_link)
-        products.append(product)
+                count_checked_products = len(json_dump["products"])
 
-        if i % 10 == 0:
-            save_json(f"{FILEPATH}\{FILENAME}_temp.json", products)
+                print(f"temp file is found for {FILENAME}")
+                print(f"category name: {category_name_rus}")
+                print(f'count checked products {count_checked_products}')
 
-    save_json(f"{FILEPATH}\{FILENAME}.json", products)
-    remove(f"{FILEPATH}\{FILENAME}_temp.json")
+            # Если были проверенный файлы, то список оставшихся ссылок обновляем, избавляясь от проверенных
+            if count_checked_products > 0:
+                left_links = links[count_checked_products:]
+            else:
+                left_links = links
 
-    driver.close()
+            print(f"count links: {json_dump['count']}")
+
+            # Проходимся по ссылкам в цикле
+            for product_link in left_links:
+                product = parse_product_page(driver, product_link)
+                json_dump["products"].append(product)
+                # print(f"{count_checked_products} : {json_dump['count']}")
+                # print(product_link)
+
+                count_checked_products += 1
+
+                # Резервное сохранение
+                if count_checked_products % 20 == 0:
+                    print(f"{count_checked_products} : {json_dump['count']}")
+                    save_json(f"{FILEPATH}\{FILENAME}_temp.json", json_dump["products"])
+
+            # Обновление данных
+            json_dump["category_name"] = category_name_rus
+            json_dump["count"] = len(links)
+
+            save_json(f"{FILEPATH}\{FILENAME}.json", json_dump)
+            if exists(f"{FILEPATH}\{FILENAME}_temp.json"):
+                remove(f"{FILEPATH}\{FILENAME}_temp.json")

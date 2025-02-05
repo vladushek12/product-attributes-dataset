@@ -46,14 +46,4 @@ if __name__ == "__main__":
     with open(f"{FILEPATH}\\all.txt") as file:
         file.write("\n".join(links))
 
-    # for CATEGORY_CATALOG_LINK in links:
-    #     CATEGORY_NAME = get_category_name(CATEGORY_CATALOG_LINK)
-        
-    #     links = get_catalog_links(driver, CATEGORY_CATALOG_LINK)
-
-    #     print(*links, sep="\n")
-
-    #     with open(f"{FILEPATH}\{CATEGORY_NAME}.txt", 'w') as file:
-    #         file.write("\n".join(links))
-    
-    driver.quit()
+    driver.close()
