@@ -1,4 +1,3 @@
-from typing import Any
 from selenium.webdriver.remote.webdriver import By
 from undetected_chromedriver import Chrome
 
@@ -25,7 +24,7 @@ def get_header_catalog(driver: Chrome):
     return fix_category_name(category_name)
 
 
-def get_links_from_catalog(driver: Chrome, catalog_link: str) -> tuple[str, list[str]]:
+def get_links(driver: Chrome, catalog_link: str) -> list[str]:
     """Функция которая обрабатывает каталог и возвращает ссылки на продукты
 
     Args:
@@ -49,21 +48,12 @@ def get_links_from_catalog(driver: Chrome, catalog_link: str) -> tuple[str, list
     links = []
 
     for page in range(count_pages):
-        links += get_product_links_from_page(driver, clear_catalog_link + f"?{create_params(listingMode='GRID', page=page)}")
+        links += get_links_page(driver, clear_catalog_link + f"?{create_params(listingMode='GRID', page=page)}")
 
     return category_name, links
 
 
-def get_product_links_from_page(driver: Chrome, catalog_link: str) -> list[str]:
-    """Функция для скрапинга ссылок со страницы каталога.
-
-    Args:
-        driver (Chrome): Драйвер Chrome браузера.
-        catalog_link (str): Ссылка на страницу каталога
-
-    Returns:
-        list[str]: Список ссылок
-    """
+def get_links_page(driver: Chrome, catalog_link: str):
     load_page(driver,
               catalog_link,
               wait_element_class="js-article-link")
@@ -74,16 +64,7 @@ def get_product_links_from_page(driver: Chrome, catalog_link: str) -> list[str]:
     return product_links
 
 
-def parse_product_page(driver: Chrome, product_link: str) -> dict[str, Any]:
-    """Скрапинг страницы товара
-
-    Args:
-        driver (Chrome): Драйвер Chrome браузера.
-        product_link (str): Страница товара
-
-    Returns:
-        dict[str, Any]: Возвращает словарь содержащий ссылку на товар, название и его характеристики.
-    """
+def parse_product_page(driver: Chrome, product_link: str):
     load_page(driver,
               product_link + f"?{create_params(tabId='specifications')}",
               wait_element_class="product-details-page__title")
@@ -152,50 +133,33 @@ if __name__ == "__main__":
                 load_page(driver, CATALOG_LINK, "catalog__header")
                 category_name_rus, _ = get_header_catalog(driver)
             else:
-                category_name_rus, links = get_links_from_catalog(driver, CATALOG_LINK)
+                category_name_rus, links = get_links(driver, CATALOG_LINK)
 
                 with open(f"{FILEPATH}\{FILENAME}_links.txt", 'w') as file:
                     file.write("\n".join(links))
 
-            count_checked_products = 0
-
-            # Если работа скрипта была прервана то есть возможность восстановления работы
             if exists(f"{FILEPATH}\{FILENAME}_temp.json"):
                 with open(f"{FILEPATH}\{FILENAME}_temp.json", "r", encoding="utf-8") as file:
                     json_dump["products"] = load(file)
 
-                count_checked_products = len(json_dump["products"])
-
                 print(f"temp file is found for {FILENAME}")
                 print(f"category name: {category_name_rus}")
-                print(f'count checked products {count_checked_products}')
-
-            # Если были проверенный файлы, то список оставшихся ссылок обновляем, избавляясь от проверенных
-            if count_checked_products > 0:
-                left_links = links[count_checked_products:]
-            else:
-                left_links = links
-
-            print(f"count links: {json_dump['count']}")
-
-            # Проходимся по ссылкам в цикле
-            for product_link in left_links:
-                product = parse_product_page(driver, product_link)
-                json_dump["products"].append(product)
-                # print(f"{count_checked_products} : {json_dump['count']}")
-                # print(product_link)
-
-                count_checked_products += 1
-
-                # Резервное сохранение
-                if count_checked_products % 20 == 0:
-                    print(f"{count_checked_products} : {json_dump['count']}")
-                    save_json(f"{FILEPATH}\{FILENAME}_temp.json", json_dump["products"])
-
-            # Обновление данных
+                print(f'count checked products {len(json_dump["products"])}')
             json_dump["category_name"] = category_name_rus
             json_dump["count"] = len(links)
+
+            products: list[dict] = json_dump["products"]
+            print(f"count links: {json_dump['count']}")
+
+            for i, product_link in enumerate(links[len(json_dump["products"]):], start=len(products)+1):
+                product = parse_product_page(driver, product_link)
+                products.append(product)
+
+                if i % 20 == 0:
+                    print(f"{i} : {json_dump['count']}")
+                    save_json(f"{FILEPATH}\{FILENAME}_temp.json", products)
 
             save_json(f"{FILEPATH}\{FILENAME}.json", json_dump)
             if exists(f"{FILEPATH}\{FILENAME}_temp.json"):
                 remove(f"{FILEPATH}\{FILENAME}_temp.json")
+            
