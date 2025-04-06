@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 import os
 import json
 from typing import List
+import datetime
+
+current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 with open("./metrics.json", "r", encoding="utf-8") as file:
     data_metrics = json.load(file)
@@ -166,8 +169,8 @@ dump_data = [{
     "score": score
 } for product, res, format, score in zip(data_metrics, result_batch, format_result, scores)]
 
-with open("internal_result.json", "w", encoding="utf-8") as file:
+with open(f"intermediate_result_{current_time}.json", "w", encoding="utf-8") as file:
     json.dump(dump_data, file, ensure_ascii=False)
 
-with open("scores.json", "w", encoding="UTF-8") as file:
+with open(f"final_score_{current_time}.json", "w", encoding="UTF-8") as file:
     json.dump(evaluate_batch_predictions(scores), file, ensure_ascii=False)
