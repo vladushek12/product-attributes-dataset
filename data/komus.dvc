@@ -1,0 +1,6 @@
+outs:
+- md5: 37b5753e3b0214833977d6d13d3afaa9.dir
+  size: 476516974
+  nfiles: 4350
+  hash: md5
+  path: komus

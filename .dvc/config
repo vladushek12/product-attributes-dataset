@@ -1,0 +1,5 @@
+[core]
+    remote = ycloud
+['remote "ycloud"']
+    url = s3://product-attributes-dataset
+    endpointurl = https://storage.yandexcloud.net
